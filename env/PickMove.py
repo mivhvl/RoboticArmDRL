@@ -5,11 +5,11 @@ from robosuite.models.arenas import MultiTableArena
 from robosuite.models.objects import BoxObject
 from robosuite.models.tasks import ManipulationTask
 from robosuite.utils.observables import Observable, sensor
-from robosuite.utils.placement_samplers import UniformRandomSampler
+from robosuite.utils.placement_samplers import UniformRandomSampler, ObjectPositionSampler
 from robosuite.utils.transform_utils import convert_quat
 
 # Environment Setup
-class NewLift(ManipulationEnv):
+class PickMove(ManipulationEnv):
 
     def __init__(
         self,
@@ -19,7 +19,7 @@ class NewLift(ManipulationEnv):
         gripper_types="default",
         base_types="default",
         initialization_noise="default",
-        table_full_size=(0.2, 0.2, 0.05),
+        table_full_size=(0.5, 0.2, 0.05),
         table_friction=(1.0, 5e-3, 1e-4),
         use_camera_obs=False,
         use_object_obs=True,
@@ -90,31 +90,28 @@ class NewLift(ManipulationEnv):
         )
 
     def reward(self, action=None):
-      
         reward = 0.0
-        # TO ADJUST, below example from Lift environment
-        # # sparse completion reward
-        # if self._check_success():
-        #     reward = 2.25
-
-        # # use a shaping reward
-        # elif self.reward_shaping:
-
-        #     # reaching reward
-        #     dist = self._gripper_to_target(
-        #         gripper=self.robots[0].gripper, target=self.cube.root_body, target_type="body", return_distance=True
-        #     )
-        #     reaching_reward = 1 - np.tanh(10.0 * dist)
-        #     reward += reaching_reward
-
-        #     # grasping reward
-        #     if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
-        #         reward += 0.25
-
-        # # Scale reward if requested
-        # if self.reward_scale is not None:
-        #     reward *= self.reward_scale / 2.25
-
+        
+        # Get current positions
+        gripper_pos = self._observables['robot0_eef_pos'].obs
+        cube_pos = self._observables['cube_pos'].obs
+        
+        # Distance between gripper and cube
+        dist = np.linalg.norm(gripper_pos - cube_pos)
+        
+        # Shaped reward components
+        reaching_reward = 1 - np.tanh(10.0 * dist)  # Reward for getting closer
+        
+        # Grasping reward
+        if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
+            reaching_reward += 0.25
+        
+        # Lifting reward
+        if self._check_success():
+            reaching_reward += 1.0
+        
+        reward = reaching_reward * self.reward_scale
+        
         return reward
     
     def _check_success(self):
@@ -147,21 +144,15 @@ class NewLift(ManipulationEnv):
             rgba=[1, 0, 0, 1],
         )
 
-        if self.placement_initializer is not None:
-            self.placement_initializer.reset()
-            self.placement_initializer.add_objects(self.cube)
-        else:
-            self.placement_initializer = UniformRandomSampler(
-                name="ObjectSampler",
-                mujoco_objects=self.cube,
-                x_range=[-0.1, 0.1],  
-                y_range=[-0.1, 0.1], 
-                rotation=None,
-                ensure_object_boundary_in_range=False,
-                ensure_valid_placement=True,
-                reference_pos= self.table_offset2, 
-                z_offset=0.01,
-            )
+        self.placement_initializer = ObjectPositionSampler(
+            name="FixedCubeSampler",
+            mujoco_objects=self.cube,
+            ensure_object_boundary_in_range=False,
+            ensure_valid_placement=True,
+            reference_pos=self.table_offset1,
+            z_offset=0.01
+        )
+
 
         self.model = ManipulationTask(
             mujoco_arena=mujoco_arena,
@@ -214,20 +205,35 @@ class NewLift(ManipulationEnv):
                 )
 
         return observables
-
+    
     def _reset_internal(self):
-
         super()._reset_internal()
 
-        # Reset all object positions using initializer sampler if we're not directly loading from an xml
+        # Reset cube position manually
         if not self.deterministic_reset:
+            # Fixed position
+            cube_pos = np.array([self.table_offset1[0], self.table_offset1[1], self.table_offset1[2] + 0.01])
+            cube_quat = np.array([1, 0, 0, 0])
+            
+            # Set the cube's joint position directly
+            self.sim.data.set_joint_qpos(
+                self.cube.joints[0],
+                np.concatenate([cube_pos, cube_quat])
+        )
+    # FOR RANDOM CUBE PLACEMENT
+    # def _reset_internal(self):
 
-            # Sample from the placement initializer for all objects
-            object_placements = self.placement_initializer.sample()
+    #     super()._reset_internal()
 
-            # Loop through all objects and reset their positions
-            for obj_pos, obj_quat, obj in object_placements.values():
-                self.sim.data.set_joint_qpos(obj.joints[0], np.concatenate([np.array(obj_pos), np.array(obj_quat)]))
+    #     # Reset all object positions using initializer sampler if we're not directly loading from an xml
+    #     if not self.deterministic_reset:
+
+    #         # Sample from the placement initializer for all objects
+    #         object_placements = self.placement_initializer.sample()
+
+    #         # Loop through all objects and reset their positions
+    #         for obj_pos, obj_quat, obj in object_placements.values():
+    #             self.sim.data.set_joint_qpos(obj.joints[0], np.concatenate([np.array(obj_pos), np.array(obj_quat)]))
 
     def visualize(self, vis_settings):
 

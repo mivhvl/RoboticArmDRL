@@ -2,19 +2,20 @@ import numpy as np
 import robosuite
 from robosuite.wrappers import GymWrapper
 from robosuite import load_composite_controller_config
-from env import NewLift
+from env.PickMove import PickMove
+from DLR.network import Hyperparameters, PPOAgent
+import os
+import time
+from collections import defaultdict
 
-if __name__ == '__main__':
-
-    debug = True
-
-    # Initialize environment
+def main():
+    # Initialize environment with BASIC controller
     robots = "Panda"
     config = load_composite_controller_config(controller="BASIC")
-   
-    # Create the robosuite environment
+    
+    # Create environment
     env = robosuite.make(
-        'NewLift',
+        'PickMove',
         robots,
         controller_configs=config,
         has_renderer=True,
@@ -23,31 +24,87 @@ if __name__ == '__main__':
         control_freq=20,
     )
 
-    # Wrap the environment with GymWrapper
-    env = GymWrapper(env)
+    # Initialize agent with proper dimensions
+    params = Hyperparameters()
+    agent = PPOAgent(params)
+    
+    # Create models directory
+    os.makedirs('models', exist_ok=True)
+    
+    # Training statistics
+    stats = defaultdict(list)
+    best_reward = -float('inf')
+    start_time = time.time()
 
-    # Reset the environment
-    obs = env.reset()
+    for episode in range(params.max_episodes):
+        raw_obs = env.reset()
+        episode_reward = 0
+        done = False
+        step_count = 0
 
+        # In the training loop:
+        while not done:
+            try:
+                action, log_prob, value = agent.get_action(raw_obs)
+                
+                # Direct mapping - agent learns proper scaling
+                env_action = np.array(action, dtype=np.float32)
+                
+                # Step the environment
+                next_raw_obs, reward, done, _ = env.step(env_action)
+                
+                # Store experience with proper type conversion
+                agent.remember(
+                    raw_obs,
+                    action.astype(np.float32),
+                    float(log_prob),
+                    float(value),
+                    float(reward),
+                    bool(done)
+                )
+                
+                raw_obs = next_raw_obs
+                episode_reward += reward
+                step_count += 1
+                
+                # Train if enough samples
+                if len(agent.memory) >= params.buffer_size:
+                    agent.train()
+                
+                # Render if needed
+                env.render()
 
-    for i in range(10):
-        action = env.action_space.sample() * 0.1  
-        obs, reward, done, info, _ = env.step(action)
-        original_obs_dict = env.unwrapped._get_observations()
+            except Exception as e:
+                print(f"Error in episode {episode}, step {step_count}:")
+                print(f"Action: {action}")
+                print(f"Observation keys: {raw_obs.keys() if isinstance(raw_obs, dict) else 'N/A'}")
+                print(f"Error: {str(e)}")
+                raise
 
-        # Print all observation data to terminal
-        if debug:
-            print("Observations:")
-            print(f"EEF Position: {original_obs_dict['robot0_eef_pos']}")
-            print(f"EEF Quaternion: {original_obs_dict['robot0_eef_quat']}")
-            print(f"Gripper Position: {original_obs_dict['robot0_gripper_qpos']}")
-            print(f"Gripper Velocity: {original_obs_dict['robot0_gripper_qvel']}")
-            print(f"Object State: {original_obs_dict['object-state']}")
-            print(f"Reward: {reward}")
-            print(f"Done: {done}")
-            print(f"Info: {info}")
+        # Update statistics
+        stats['episode_rewards'].append(episode_reward)
+        stats['episode_lengths'].append(step_count)
+        
+        # Save best model
+        if episode_reward > best_reward:
+            best_reward = episode_reward
+            agent.save_model('models/best_model.pth')
+        
+        avg_reward = np.mean(stats['episode_rewards'][-10:])
+        print(f"Episode: {episode:4d}, "
+                f"Reward: {episode_reward:7.2f}, "
+                f"Avg Reward (10): {avg_reward:7.2f}, "
+                f"Best: {best_reward:7.2f}, "
+                f"Steps: {step_count:4d}, "
+                f"Time: {time.time()-start_time:.1f}s")
+        
+        # Periodic saves
+        if episode % 100 == 0:
+            agent.save_model(f'models/checkpoint_{episode}.pth')
+    
+    # Save final model
+    agent.save_model('models/final_model.pth')
+    env.close()
 
-        env.render()
-
-        if done:
-            break
+if __name__ == '__main__':
+    main()
