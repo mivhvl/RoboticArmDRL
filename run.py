@@ -44,6 +44,7 @@ def main():
 
         # In the training loop:
         while not done:
+            action = None
             try:
                 action, log_prob, value = agent.get_action(raw_obs)
                 

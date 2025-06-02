@@ -85,7 +85,7 @@ class PPOAgent:
         # Scale position/orientation outputs differently
         dist = MultivariateNormal(mean, torch.diag(std))
         action = dist.sample()
-        log_prob = dist.log_prob(torch.FloatTensor(action).to(self.device))
+        log_prob = dist.log_prob(action)
         
         # Automatic scaling
         action = action.squeeze(0).cpu().numpy()
