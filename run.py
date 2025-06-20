@@ -7,6 +7,7 @@ from DLR.network import Hyperparameters, PPOAgent
 import os
 import time
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 def main():
     # Initialize environment with BASIC controller
@@ -26,6 +27,7 @@ def main():
 
     # Initialize agent with proper dimensions
     params = Hyperparameters()
+    params.max_episodes = 5
     agent = PPOAgent(params)
     
     # Create models directory
@@ -70,7 +72,9 @@ def main():
                 
                 # Train if enough samples
                 if len(agent.memory) >= params.buffer_size:
-                    agent.train()
+                    loss = agent.train()
+                    print(loss)
+                    stats['losses'].append(loss)
                 
                 # Render if needed
                 env.render()
@@ -105,6 +109,20 @@ def main():
     
     # Save final model
     agent.save_model('models/final_model.pth')
+
+    if stats['losses']:
+        print(stats['losses'])
+        plt.figure(figsize=(10, 5))
+        plt.plot(stats['losses'], label='Training Loss')
+        plt.xlabel('Training Steps')
+        plt.ylabel('Loss')
+        plt.title('PPO Training Loss over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig('loss_curve.png')  # Save to file
+        plt.show() 
+
     env.close()
 
 if __name__ == '__main__':
