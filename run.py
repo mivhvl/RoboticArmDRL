@@ -27,7 +27,7 @@ def main():
 
     # Initialize agent with proper dimensions
     params = Hyperparameters()
-    params.max_episodes = 10
+    params.max_episodes = 100
     agent = PPOAgent(params.obs_dim, params.action_dim)
     
     # Create models directory
@@ -110,8 +110,19 @@ def main():
     # Save final model
     agent.save_model('models/final_model.pth')
 
+    if stats['episode_rewards']:
+        plt.figure(figsize=(10, 5))
+        plt.plot(stats['episode_rewards'], label='Training Rewards')
+        plt.xlabel('Training Steps')
+        plt.ylabel('Reward')
+        plt.title('PPO Training Reward over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig('reward_curve.png')  # Save to file
+        plt.show() 
+
     if stats['losses']:
-        print(stats['losses'])
         plt.figure(figsize=(10, 5))
         plt.plot(stats['losses'], label='Training Loss')
         plt.xlabel('Training Steps')

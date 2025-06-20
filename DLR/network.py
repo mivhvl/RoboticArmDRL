@@ -15,7 +15,7 @@ class Hyperparameters:
         self.action_dim = 7 
         # Training parameters
         self.gamma = 0.99
-        self.lr = 1e-6
+        self.lr = 3e-4
         self.batch_size = 64
         self.n_epochs = 10
         self.clip = 0.2
