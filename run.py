@@ -27,8 +27,8 @@ def main():
 
     # Initialize agent with proper dimensions
     params = Hyperparameters()
-    params.max_episodes = 5
-    agent = PPOAgent(params)
+    params.max_episodes = 10
+    agent = PPOAgent(params.obs_dim, params.action_dim)
     
     # Create models directory
     os.makedirs('models', exist_ok=True)
@@ -48,7 +48,7 @@ def main():
         while not done:
             action = None
             try:
-                action, log_prob, value = agent.get_action(raw_obs)
+                action, log_prob, value = agent.select_action(raw_obs)
                 
                 # Direct mapping - agent learns proper scaling
                 env_action = np.array(action, dtype=np.float32)
@@ -57,7 +57,7 @@ def main():
                 next_raw_obs, reward, done, _ = env.step(env_action)
                 
                 # Store experience with proper type conversion
-                agent.remember(
+                agent.store_transition(
                     raw_obs,
                     action.astype(np.float32),
                     float(log_prob),

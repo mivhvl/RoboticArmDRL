@@ -28,7 +28,7 @@ class Hyperparameters:
 
 class PPONetwork(nn.Module):
     def __init__(self, obs_dim, action_dim, hidden_size=64):
-        super().__init__()
+        super(PPONetwork, self).__init__()
         # Shared layers
         self.fc1 = nn.Linear(obs_dim, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
@@ -72,13 +72,20 @@ class PPOAgent:
         # Experience buffers
         self.memory = []
 
-    def select_action(self, obs):
-        obs_tensor = torch.FloatTensor(obs).to(self.device)
+    def select_action(self, raw_obs):
+        obs = self.preprocess_obs(raw_obs)
+        obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
         mean, std, value = self.network(obs_tensor)
         dist = MultivariateNormal(mean, torch.diag(std))
         action = dist.sample()
         log_prob = dist.log_prob(action)
-        return action.cpu().numpy(), log_prob.item(), value.item()
+
+        # Automatic scaling
+        action = action.squeeze(0).cpu().numpy()
+        action[:6] *= 0.1  # Smaller steps for position/orientation
+        action[-1] = np.clip(action[-1], -1, 1) # Clip -1 to 1
+
+        return action, log_prob.item(), value.item()
 
     def store_transition(self, obs, action, log_prob, value, reward, done):
         self.memory.append((obs, action, log_prob, value, reward, done))
@@ -107,9 +114,13 @@ class PPOAgent:
         return obs, actions, old_log_probs, returns, advantages
 
     def preprocess_obs(self, raw_obs):
-        # You can put your preprocessing here or outside and just feed ready obs
-        # For now, assume raw_obs is already a numpy vector of obs_dim size
-        return raw_obs
+        return np.concatenate([
+            np.array(raw_obs['robot0_eef_pos'], dtype=np.float32),
+            np.array(raw_obs['robot0_eef_quat'], dtype=np.float32),
+            np.array(raw_obs['robot0_gripper_qpos'], dtype=np.float32),
+            np.array(raw_obs['robot0_gripper_qvel'], dtype=np.float32),
+            np.array(raw_obs['object-state'], dtype=np.float32),
+        ])
 
     def train(self):
         if len(self.memory) < self.batch_size:
@@ -143,6 +154,9 @@ class PPOAgent:
 
                 policy_loss = -torch.min(surr1, surr2).mean()
                 value_loss = 0.5 * (batch_returns - values).pow(2).mean()
+                avg_value_loss = values.mean().item()
+                avg_batch_returns = batch_returns.mean().item()
+                print(f"[DEBUG] values={avg_value_loss:.3f}, avg_batch_returns={avg_batch_returns:.3f}")
 
                 loss = policy_loss + self.vf_coef * value_loss - self.ent_coef * entropy
 
