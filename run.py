@@ -27,7 +27,6 @@ def main():
 
     # Initialize agent with proper dimensions
     params = Hyperparameters()
-    params.max_episodes = 100
     agent = PPOAgent(params.obs_dim, params.action_dim)
     
     # Create models directory
@@ -109,6 +108,15 @@ def main():
     
     # Save final model
     agent.save_model('models/final_model.pth')
+
+    plt.figure(figsize=(8,4))
+    plt.plot(agent.value_trace,  label='Value (pred)')
+    plt.plot(agent.return_trace, label='Return (target)')
+    plt.title('Critic Prediction vs. Empirical Return')
+    plt.xlabel('Minibatch'); plt.ylabel('Average')
+    plt.legend(); plt.grid(True); plt.tight_layout()
+    plt.savefig('value_vs_return.png')   # also saved to disk
+    plt.show()
 
     if stats['episode_rewards']:
         plt.figure(figsize=(10, 5))

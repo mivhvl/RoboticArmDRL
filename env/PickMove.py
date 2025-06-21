@@ -89,6 +89,7 @@ class PickMove(ManipulationEnv):
             renderer_config=renderer_config,
         )
 
+    """
     def reward(self, action=None):
         reward = 0.0
 
@@ -98,7 +99,7 @@ class PickMove(ManipulationEnv):
         dist_gripper_cube = np.linalg.norm(gripper_pos - cube_pos)
 
         # Encourage the gripper to get close to the cube
-        reach_reward = 1 - np.tanh(dist_gripper_cube / 10)
+        reach_reward = 1 - np.tanh(dist_gripper_cube / 0.2)
 
         # Grasping reward (binary)
         grasp_reward = .5 if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube) else 0.0
@@ -111,16 +112,38 @@ class PickMove(ManipulationEnv):
         reward = (reach_reward + grasp_reward) * self.reward_scale
 
         return reward
+    """
 
+    def reward(self, action=None):
+        reward = 0.0
+
+        gripper_pos = self._observables['robot0_eef_pos'].obs
+        cube_pos = self._observables['cube_pos'].obs
+
+        dist = np.linalg.norm(gripper_pos - cube_pos)
+        reach_reward = 1 - np.tanh(dist / 0.2)  # tighter shaping
+
+        grasp_reward = 0.0
+        if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
+            if cube_pos[2] > self.table_offset1[2] + 0.05:
+                grasp_reward = 1.0  # lifted
+            else:
+                grasp_reward = 0.5  # grasped
+
+        action_penalty = -0.01 * np.square(action).sum() if action is not None else 0.0
+
+        reward = (0.5 * reach_reward + 2 * grasp_reward + action_penalty) * self.reward_scale
+
+        return reward
     
     def _check_success(self):
-        #cube_height = self.sim.data.body_xpos[self.cube_body_id][2]
-        #table_height = self.model.mujoco_arena.table_offsets[0][2]
+        cube_height = self.sim.data.body_xpos[self.cube_body_id][2]
+        table_height = self.model.mujoco_arena.table_offsets[0][2]
 
         # cube is higher than the table top above a margin
-        #return cube_height > table_height + 0.04
+        return self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube) #and cube_height > table_height + 0.04
         
-        return self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube)
+        #return self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube)
 
     def _load_model(self):
         super()._load_model()

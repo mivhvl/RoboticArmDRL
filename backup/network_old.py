@@ -18,10 +18,10 @@ class Hyperparameters:
         self.batch_size = 64
         self.n_epochs = 10
         self.clip = 0.2
-        self.ent_coef = 0.01
+        self.ent_coef = 0.005
         self.vf_coef = 0.5
         self.max_grad_norm = 0.5
-        self.hidden_size = 64
+        self.hidden_size = 128
         self.buffer_size = 2048
         self.max_episodes = 10000
 

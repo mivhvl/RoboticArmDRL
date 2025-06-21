@@ -18,16 +18,16 @@ class Hyperparameters:
         self.lr = 3e-4
         self.batch_size = 64
         self.n_epochs = 10
-        self.clip = 0.2
+        self.clip = 0.1
         self.ent_coef = 0.01
-        self.vf_coef = 0.5
+        self.vf_coef = 0.4
         self.max_grad_norm = 0.5
-        self.hidden_size = 64
+        self.hidden_size = 128
         self.buffer_size = 2048
-        self.max_episodes = 10000
+        self.max_episodes = 100
 
 class PPONetwork(nn.Module):
-    def __init__(self, obs_dim, action_dim, hidden_size=64):
+    def __init__(self, obs_dim, action_dim, hidden_size=128):
         super(PPONetwork, self).__init__()
         # Shared layers
         self.fc1 = nn.Linear(obs_dim, hidden_size)
@@ -57,7 +57,6 @@ class PPOAgent:
     def __init__(self, obs_dim, action_dim, device='cpu', **kwargs):
         self.device = device
         self.network = PPONetwork(obs_dim, action_dim).to(device)
-        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=3e-4)
 
         # Hyperparameters
         self.clip = kwargs.get('clip', 0.2)
@@ -68,9 +67,14 @@ class PPOAgent:
         self.max_grad_norm = kwargs.get('max_grad_norm', 0.5)
         self.batch_size = kwargs.get('batch_size', 64)
         self.n_epochs = kwargs.get('n_epochs', 10)
+        self.optimizer = optim.Adam(self.network.parameters(), lr=1e-5)
 
         # Experience buffers
         self.memory = []
+
+        # Plots
+        self.value_trace  = []   # average critic prediction per minibatch
+        self.return_trace = []   # average empirical return per minibatch
 
     def select_action(self, raw_obs):
         obs = self.preprocess_obs(raw_obs)
@@ -82,7 +86,7 @@ class PPOAgent:
 
         # Automatic scaling
         action = action.squeeze(0).cpu().numpy()
-        action[:6] *= 0.1  # Smaller steps for position/orientation
+        action[:6] *= 1  # Smaller steps for position/orientation
         action[-1] = np.clip(action[-1], -1, 1) # Clip -1 to 1
 
         return action, log_prob.item(), value.item()
@@ -113,6 +117,7 @@ class PPOAgent:
         advantages = torch.FloatTensor(advantages).to(self.device)
         return obs, actions, old_log_probs, returns, advantages
 
+    # In your PPOAgent class (revert preprocess_obs)
     def preprocess_obs(self, raw_obs):
         return np.concatenate([
             np.array(raw_obs['robot0_eef_pos'], dtype=np.float32),
@@ -127,6 +132,8 @@ class PPOAgent:
             return 0.0
 
         obs, actions, old_log_probs, returns, advantages = self.preprocess_batch()
+
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         total_loss = 0
         for _ in range(self.n_epochs):
@@ -156,7 +163,8 @@ class PPOAgent:
                 value_loss = 0.5 * (batch_returns - values).pow(2).mean()
                 avg_value_loss = values.mean().item()
                 avg_batch_returns = batch_returns.mean().item()
-                print(f"[DEBUG] values={avg_value_loss:.3f}, avg_batch_returns={avg_batch_returns:.3f}")
+                self.value_trace.append(avg_value_loss)
+                self.return_trace.append(avg_batch_returns)
 
                 loss = policy_loss + self.vf_coef * value_loss - self.ent_coef * entropy
 
