@@ -15,7 +15,7 @@ class Hyperparameters:
         self.action_dim = 7 
         # Training parameters
         self.gamma = 0.99
-        self.lr = 3e-4
+        self.lr = 1e-5
         self.batch_size = 64
         self.n_epochs = 10
         self.clip = 0.1
@@ -77,8 +77,7 @@ class PPOAgent:
         self.return_trace = []   # average empirical return per minibatch
 
     def select_action(self, raw_obs):
-        obs = self.preprocess_obs(raw_obs)
-        obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
+        obs_tensor = torch.FloatTensor(raw_obs).unsqueeze(0).to(self.device)
         mean, std, value = self.network(obs_tensor)
         dist = MultivariateNormal(mean, torch.diag(std))
         action = dist.sample()
@@ -86,7 +85,7 @@ class PPOAgent:
 
         # Automatic scaling
         action = action.squeeze(0).cpu().numpy()
-        action[:6] *= 1  # Smaller steps for position/orientation
+        action[:6] *= 0.8  # Smaller steps for position/orientation
         action[-1] = np.clip(action[-1], -1, 1) # Clip -1 to 1
 
         return action, log_prob.item(), value.item()
@@ -107,25 +106,15 @@ class PPOAgent:
         return advantages, returns
 
     def preprocess_batch(self):
-        obs, actions, log_probs, values, rewards, dones = zip(*self.memory)
+        obs_from_memory, actions, log_probs, values, rewards, dones = zip(*self.memory) # Renamed `obs` to `obs_from_memory`
         advantages, returns = self.compute_gae(list(rewards), list(values), list(dones))
 
-        obs = torch.FloatTensor(np.array([self.preprocess_obs(o) for o in obs])).to(self.device)
+        obs_tensor = torch.FloatTensor(np.array(obs_from_memory)).to(self.device) # <-- Directly convert to tensor
         actions = torch.FloatTensor(np.array(actions)).to(self.device)
         old_log_probs = torch.FloatTensor(np.array(log_probs)).to(self.device)
         returns = torch.FloatTensor(returns).to(self.device)
         advantages = torch.FloatTensor(advantages).to(self.device)
-        return obs, actions, old_log_probs, returns, advantages
-
-    # In your PPOAgent class (revert preprocess_obs)
-    def preprocess_obs(self, raw_obs):
-        return np.concatenate([
-            np.array(raw_obs['robot0_eef_pos'], dtype=np.float32),
-            np.array(raw_obs['robot0_eef_quat'], dtype=np.float32),
-            np.array(raw_obs['robot0_gripper_qpos'], dtype=np.float32),
-            np.array(raw_obs['robot0_gripper_qvel'], dtype=np.float32),
-            np.array(raw_obs['object-state'], dtype=np.float32),
-        ])
+        return obs_tensor, actions, old_log_probs, returns, advantages
 
     def train(self):
         if len(self.memory) < self.batch_size:
