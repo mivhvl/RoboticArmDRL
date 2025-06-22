@@ -13,7 +13,23 @@ def main():
     # Initialize environment with BASIC controller
     robots = "Panda"
     config = load_composite_controller_config(controller="BASIC")
-    
+    for part in config["body_parts"]:
+        if "output_max" not in config["body_parts"][part] or "output_min" not in config["body_parts"][part]:
+            continue
+        if type(config["body_parts"][part]["output_max"]) is not list:
+            config["body_parts"][part]["output_max"] /= 5
+            config["body_parts"][part]["output_min"] /= 5
+            continue
+
+        new_min = []
+        new_max = []
+        for val in config["body_parts"][part]["output_max"]:
+            new_max.append(val / 5) 
+        for val in config["body_parts"][part]["output_min"]:
+            new_min.append(val / 5)
+        config["body_parts"][part]["output_min"] = new_min
+        config["body_parts"][part]["output_max"] = new_max
+
     # Create environment
     env = robosuite.make(
         'PickMove',
@@ -23,11 +39,12 @@ def main():
         has_offscreen_renderer=False,
         use_camera_obs=False,
         control_freq=20,
+        ignore_done=False, 
     )
 
     # Initialize agent with proper dimensions
     params = Hyperparameters()
-    agent = PPOAgent(params.obs_dim, params.action_dim)
+    agent = PPOAgent(params.obs_dim, params.action_dim, kwargs=params)
     
     # Create models directory
     os.makedirs('models', exist_ok=True)
@@ -72,8 +89,8 @@ def main():
                 # Train if enough samples
                 if len(agent.memory) >= params.buffer_size:
                     loss = agent.train()
-                    print(loss)
                     stats['losses'].append(loss)
+                    done = True
                 
                 # Render if needed
                 env.render()

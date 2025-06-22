@@ -17,14 +17,14 @@ class Hyperparameters:
         self.gamma = 0.99
         self.lr = 3e-4
         self.batch_size = 64
-        self.n_epochs = 10
-        self.clip = 0.1
+        self.n_epochs = 15
+        self.clip = 0.2
         self.ent_coef = 0.01
         self.vf_coef = 0.4
-        self.max_grad_norm = 0.5
+        self.max_grad_norm = .5
         self.hidden_size = 128
         self.buffer_size = 2048
-        self.max_episodes = 100
+        self.max_episodes = 2500
 
 class PPONetwork(nn.Module):
     def __init__(self, obs_dim, action_dim, hidden_size=128):
@@ -54,20 +54,20 @@ class PPONetwork(nn.Module):
 import numpy as np
 
 class PPOAgent:
-    def __init__(self, obs_dim, action_dim, device='cpu', **kwargs):
+    def __init__(self, obs_dim, action_dim, device='cpu', kwargs=Hyperparameters()):
         self.device = device
         self.network = PPONetwork(obs_dim, action_dim).to(device)
 
         # Hyperparameters
-        self.clip = kwargs.get('clip', 0.2)
-        self.gamma = kwargs.get('gamma', 0.99)
-        self.lam = kwargs.get('lam', 0.95)  # for GAE
-        self.vf_coef = kwargs.get('vf_coef', 0.5)
-        self.ent_coef = kwargs.get('ent_coef', 0.01)
-        self.max_grad_norm = kwargs.get('max_grad_norm', 0.5)
-        self.batch_size = kwargs.get('batch_size', 64)
-        self.n_epochs = kwargs.get('n_epochs', 10)
-        self.optimizer = optim.Adam(self.network.parameters(), lr=1e-5)
+        self.clip = kwargs.clip
+        self.gamma = kwargs.gamma
+        self.lam = .95  # for GAE
+        self.vf_coef = kwargs.vf_coef
+        self.ent_coef = kwargs.ent_coef
+        self.max_grad_norm = kwargs.max_grad_norm
+        self.batch_size = kwargs.batch_size
+        self.n_epochs = kwargs.n_epochs
+        self.optimizer = optim.Adam(self.network.parameters(), lr=kwargs.lr)
 
         # Experience buffers
         self.memory = []
@@ -86,7 +86,7 @@ class PPOAgent:
 
         # Automatic scaling
         action = action.squeeze(0).cpu().numpy()
-        action[:6] *= 1  # Smaller steps for position/orientation
+        #action[:6] *= .1  # Smaller steps for position/orientation
         action[-1] = np.clip(action[-1], -1, 1) # Clip -1 to 1
 
         return action, log_prob.item(), value.item()
@@ -133,7 +133,7 @@ class PPOAgent:
 
         obs, actions, old_log_probs, returns, advantages = self.preprocess_batch()
 
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         total_loss = 0
         for _ in range(self.n_epochs):

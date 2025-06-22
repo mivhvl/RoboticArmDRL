@@ -7,6 +7,7 @@ from robosuite.models.tasks import ManipulationTask
 from robosuite.utils.observables import Observable, sensor
 from robosuite.utils.placement_samplers import UniformRandomSampler, ObjectPositionSampler
 from robosuite.utils.transform_utils import convert_quat
+from robosuite.utils import transform_utils as T
 
 # Environment Setup
 class PickMove(ManipulationEnv):
@@ -32,9 +33,9 @@ class PickMove(ManipulationEnv):
         render_collision_mesh=False,
         render_visual_mesh=True,
         render_gpu_device_id=-1,
-        control_freq=20,
+        control_freq=10,
         lite_physics=True,
-        horizon=1000,
+        horizon=500,
         ignore_done=False,
         hard_reset=True,
         camera_names="agentview",
@@ -89,30 +90,21 @@ class PickMove(ManipulationEnv):
             renderer_config=renderer_config,
         )
 
-    """
-    def reward(self, action=None):
-        reward = 0.0
-
-        gripper_pos = self._observables['robot0_eef_pos'].obs
+    def _check_cube_fallen(self):
+        """
+        Checks if the cube has fallen off the table (e.g., gone below a certain Z-threshold).
+        """
         cube_pos = self._observables['cube_pos'].obs
+        # Check if the cube's z-position is significantly below the table surface
+        # Or below a general floor level
+        
+        # Using the table_offset1[2] you have:
+        # return cube_pos[2] < self.table_offset1[2] - 0.05 # Example threshold: 5cm below table surface
+        # Make sure self.table_offset1 is defined at this point (it should be in __init__)
+        
+        # More robust: check against a defined floor height or threshold relative to table
+        return cube_pos[2] < self.table_offset1[2] #- 0.05
 
-        dist_gripper_cube = np.linalg.norm(gripper_pos - cube_pos)
-
-        # Encourage the gripper to get close to the cube
-        reach_reward = 1 - np.tanh(dist_gripper_cube / 0.2)
-
-        # Grasping reward (binary)
-        grasp_reward = .5 if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube) else 0.0
-
-        # Small action penalty to encourage smoother movements (optional)
-        action_penalty = -0.005 * np.square(action).sum() if action is not None else 0.0
-
-        #print(f"Reach Reward: {reach_reward}, Grasp Reward: {grasp_reward}, Action Penalty: {action_penalty}")
-
-        reward = (reach_reward + grasp_reward) * self.reward_scale
-
-        return reward
-    """
 
     def reward(self, action=None):
         reward = 0.0
@@ -123,6 +115,9 @@ class PickMove(ManipulationEnv):
         dist = np.linalg.norm(gripper_pos - cube_pos)
         reach_reward = 1 - np.tanh(dist / 0.2)  # tighter shaping
 
+        if self._check_cube_fallen():
+            return -25  # large negative reward if cube has fallen
+
         grasp_reward = 0.0
         if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
             if cube_pos[2] > self.table_offset1[2] + 0.05:
@@ -130,7 +125,15 @@ class PickMove(ManipulationEnv):
             else:
                 grasp_reward = 0.5  # grasped
 
-        action_penalty = -0.01 * np.square(action).sum() if action is not None else 0.0
+        action_penalty = -0.005 * np.square(action).sum() if action is not None else 0.0
+
+        eef_quat_xyzw = self._observables['robot0_eef_quat'].obs # This observable is in (x, y, z, w) format
+        eef_quat_wxyz = np.array([eef_quat_xyzw[3], eef_quat_xyzw[0], eef_quat_xyzw[1], eef_quat_xyzw[2]])
+        eef_rotation_matrix = T.quat2mat(eef_quat_wxyz)
+        gripper_z_axis_world = eef_rotation_matrix[:, 2]
+        global_z_axis = np.array([0., 0., 1.])
+        dot_product = np.clip(np.dot(gripper_z_axis_world, global_z_axis), -1.0, 1.0)
+        verticality_reward = 0.2 * np.maximum(0., dot_product) ** 2
 
         reward = (0.5 * reach_reward + 2 * grasp_reward + action_penalty) * self.reward_scale
 
@@ -141,7 +144,7 @@ class PickMove(ManipulationEnv):
         table_height = self.model.mujoco_arena.table_offsets[0][2]
 
         # cube is higher than the table top above a margin
-        return self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube) #and cube_height > table_height + 0.04
+        return self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube) and cube_height > table_height + 0.04
         
         #return self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube)
 
@@ -243,6 +246,20 @@ class PickMove(ManipulationEnv):
                 self.cube.joints[0],
                 np.concatenate([cube_pos, cube_quat])
         )
+            
+    def _get_done(self):
+        """
+        Overriding the base method to include the cube fallen condition.
+        """
+        # Default done conditions (horizon reached, optional success condition if `ignore_done` is False)
+        done = False
+        
+        # Add the cube fallen condition
+        if self._check_cube_fallen():
+            done = True
+        
+        return done
+    
     # FOR RANDOM CUBE PLACEMENT
     # def _reset_internal(self):
 
@@ -257,6 +274,27 @@ class PickMove(ManipulationEnv):
     #         # Loop through all objects and reset their positions
     #         for obj_pos, obj_quat, obj in object_placements.values():
     #             self.sim.data.set_joint_qpos(obj.joints[0], np.concatenate([np.array(obj_pos), np.array(obj_quat)]))
+
+    def step(self, action):
+        """
+        Overrides the step function to explicitly handle done conditions,
+        including the cube falling.
+        """
+        # Call the base class's step method first to advance the simulation
+        # and get the default next_observation, reward, done, and info.
+        next_observation, reward, done, info = super().step(action)
+
+        # Now, explicitly check our custom done condition
+        # (This will call your _get_done method, which includes _check_cube_fallen)
+        custom_done = self._get_done()
+
+        # Combine the done signals:
+        # If the base class says it's done OR our custom condition says it's done,
+        # then the episode is truly done.
+        final_done = done or custom_done
+
+        # Return the updated done signal
+        return next_observation, reward, final_done, info
 
     def visualize(self, vis_settings):
 
