@@ -121,9 +121,9 @@ class PickMove(ManipulationEnv):
         grasp_reward = 0.0
         if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
             if cube_pos[2] > self.table_offset1[2] + 0.05:
-                grasp_reward = 1.0  # lifted
+                grasp_reward = 2.0  # lifted
             else:
-                grasp_reward = 0.5  # grasped
+                grasp_reward = 1.0  # grasped
 
         action_penalty = -0.005 * np.square(action).sum() if action is not None else 0.0
 
@@ -131,11 +131,11 @@ class PickMove(ManipulationEnv):
         eef_quat_wxyz = np.array([eef_quat_xyzw[3], eef_quat_xyzw[0], eef_quat_xyzw[1], eef_quat_xyzw[2]])
         eef_rotation_matrix = T.quat2mat(eef_quat_wxyz)
         gripper_z_axis_world = eef_rotation_matrix[:, 2]
-        global_z_axis = np.array([0., 0., 1.])
+        global_z_axis = np.array([0., 0., -1.])
         dot_product = np.clip(np.dot(gripper_z_axis_world, global_z_axis), -1.0, 1.0)
-        verticality_reward = 0.2 * np.maximum(0., dot_product) ** 2
+        verticality_reward = 0.15 * np.maximum(0., dot_product) ** 2
 
-        reward = (0.5 * reach_reward + 2 * grasp_reward + action_penalty) * self.reward_scale
+        reward = (0.5 * reach_reward + 2 * grasp_reward + action_penalty + verticality_reward) * self.reward_scale
 
         return reward
     
