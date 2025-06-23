@@ -51,6 +51,7 @@ class PickMove(ManipulationEnv):
         self.table_friction = table_friction
         self.table_offset1 = np.array((0, 0.12, 0.9))
         self.table_offset2 = np.array((0, -0.12, 0.9))
+        self.gripper_grip_site_id = None
 
         # reward configuration
         self.reward_scale = reward_scale
@@ -108,6 +109,7 @@ class PickMove(ManipulationEnv):
 
     def reward(self, action=None):
         reward = 0.0
+        global_z_axis = np.array([0., 0., -1.])
 
         gripper_pos = self._observables['robot0_eef_pos'].obs
         cube_pos = self._observables['cube_pos'].obs
@@ -116,26 +118,39 @@ class PickMove(ManipulationEnv):
         reach_reward = 1 - np.tanh(dist / 0.2)  # tighter shaping
 
         if self._check_cube_fallen():
-            return -25  # large negative reward if cube has fallen
+            return -15  # large negative reward if cube has fallen
 
         grasp_reward = 0.0
+        gripper_open_reward = 0.0
         if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
             if cube_pos[2] > self.table_offset1[2] + 0.05:
                 grasp_reward = 2.0  # lifted
             else:
                 grasp_reward = 1.0  # grasped
+        else:
+            gripper_joint_names = self.robots[0].gripper["right"].joints
+            joint_qpos = [self.sim.data.get_joint_qpos(joint) for joint in gripper_joint_names]
+            open_val = self.robots[0].gripper["right"].init_qpos[0]
+            current_val = joint_qpos[0]
+            normalized_open = current_val / open_val
+            gripper_open_reward = 0.01 * normalized_open
 
         action_penalty = -0.005 * np.square(action).sum() if action is not None else 0.0
 
-        eef_quat_xyzw = self._observables['robot0_eef_quat'].obs # This observable is in (x, y, z, w) format
-        eef_quat_wxyz = np.array([eef_quat_xyzw[3], eef_quat_xyzw[0], eef_quat_xyzw[1], eef_quat_xyzw[2]])
-        eef_rotation_matrix = T.quat2mat(eef_quat_wxyz)
-        gripper_z_axis_world = eef_rotation_matrix[:, 2]
-        global_z_axis = np.array([0., 0., -1.])
-        dot_product = np.clip(np.dot(gripper_z_axis_world, global_z_axis), -1.0, 1.0)
-        verticality_reward = 0.15 * np.maximum(0., dot_product) ** 2
+        verticality_reward = 0.0
 
-        reward = (0.5 * reach_reward + 2 * grasp_reward + action_penalty + verticality_reward) * self.reward_scale
+        gripper_quat = self._observables['robot0_eef_quat'].obs  # (x, y, z, w)
+        gripper_mat = T.quat2mat(gripper_quat)
+        gripper_z_axis = gripper_mat[:, 2]  # z-axis of the gripper in world frame
+
+        # Compute alignment with global z-axis (vertical)
+        verticality = np.dot(gripper_z_axis, global_z_axis) - .95
+        if verticality < 0:
+            verticality_reward = -.1
+        else:
+            verticality_reward = .1
+
+        reward = (0.75 * reach_reward + 4 * grasp_reward + action_penalty + verticality_reward + gripper_open_reward) * self.reward_scale
 
         return reward
     
@@ -192,6 +207,13 @@ class PickMove(ManipulationEnv):
         # Additional object references from this env
         self.cube_body_id = self.sim.model.body_name2id(self.cube.root_body)
 
+        try:
+            self.gripper_grip_site_id = self.sim.model.site_name2id("gripper0_right_grip_site")
+            print(f"INFO: 'gripper0_right_grip_site' ID found: {self.gripper_grip_site_id}")
+        except KeyError:
+            self.gripper_grip_site_id = None
+            print("ERROR: 'gripper0_right_grip_site' not found. Verticality reward will be 0.")
+
     def _setup_observables(self):
 
         observables = super()._setup_observables()
@@ -209,6 +231,10 @@ class PickMove(ManipulationEnv):
             @sensor(modality=modality)
             def cube_quat(obs_cache):
                 return convert_quat(np.array(self.sim.data.body_xquat[self.cube_body_id]), to="xyzw")
+
+            #@sensor(modality=modality)
+            #def robot0_gripper_qpos(obs_cache):
+            #    return np.array([self.sim.data.qpos[x] for x in self.robots[0].gripper.dof_ids])
 
             sensors = [cube_pos, cube_quat]
 
