@@ -15,16 +15,16 @@ class Hyperparameters:
         self.action_dim = 7 
         # Training parameters
         self.gamma = 0.99
-        self.lr = 3e-4
+        self.lr = 3e-5
         self.batch_size = 64
         self.n_epochs = 15
         self.clip = 0.2
-        self.ent_coef = 0.015
-        self.vf_coef = 0.4
+        self.ent_coef = 0.01
+        self.vf_coef = 0.5
         self.max_grad_norm = .5
         self.hidden_size = 128
         self.buffer_size = 2048
-        self.max_episodes = 1000
+        self.max_episodes = 2500
 
 class PPONetwork(nn.Module):
     def __init__(self, obs_dim, action_dim, hidden_size=128):

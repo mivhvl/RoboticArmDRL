@@ -35,7 +35,7 @@ class PickMove(ManipulationEnv):
         render_gpu_device_id=-1,
         control_freq=10,
         lite_physics=True,
-        horizon=500,
+        horizon=750,
         ignore_done=False,
         hard_reset=True,
         camera_names="agentview",
@@ -62,6 +62,9 @@ class PickMove(ManipulationEnv):
 
         # object placement initializer
         self.placement_initializer = placement_initializer
+
+        self.cube_disturbance_threshold = 0.02
+        self.initial_cube_pos = None
 
         super().__init__(
             robots=robots,
@@ -122,9 +125,11 @@ class PickMove(ManipulationEnv):
 
         grasp_reward = 0.0
         gripper_open_reward = 0.0
+        cube_disturbance_penalty = 0.0
         if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
+            print("Grasp detected")
             if cube_pos[2] > self.table_offset1[2] + 0.05:
-                grasp_reward = 2.0  # lifted
+                grasp_reward = 2  # lifted
             else:
                 grasp_reward = 1.0  # grasped
         else:
@@ -134,6 +139,11 @@ class PickMove(ManipulationEnv):
             current_val = joint_qpos[0]
             normalized_open = current_val / open_val
             gripper_open_reward = 0.01 * normalized_open
+
+            if self.initial_cube_pos is not None:
+                current_cube_movement = np.linalg.norm(cube_pos - self.initial_cube_pos)
+                if current_cube_movement > self.cube_disturbance_threshold:
+                    cube_disturbance_penalty = -0.4
 
         action_penalty = -0.005 * np.square(action).sum() if action is not None else 0.0
 
@@ -146,11 +156,11 @@ class PickMove(ManipulationEnv):
         # Compute alignment with global z-axis (vertical)
         verticality = np.dot(gripper_z_axis, global_z_axis) - .95
         if verticality < 0:
-            verticality_reward = -.1
+            verticality_reward = -.35
         else:
-            verticality_reward = .1
+            verticality_reward = .35
 
-        reward = (0.75 * reach_reward + 4 * grasp_reward + action_penalty + verticality_reward + gripper_open_reward) * self.reward_scale
+        reward = (0.9 * reach_reward + 2 * grasp_reward + action_penalty + verticality_reward + gripper_open_reward + cube_disturbance_penalty) * self.reward_scale
 
         return reward
     
@@ -266,6 +276,8 @@ class PickMove(ManipulationEnv):
             # Fixed position
             cube_pos = np.array([self.table_offset1[0], self.table_offset1[1], self.table_offset1[2] + 0.01])
             cube_quat = np.array([1, 0, 0, 0])
+
+            self.initial_cube_pos = cube_pos.copy()  # Store the initial position for later checks
             
             # Set the cube's joint position directly
             self.sim.data.set_joint_qpos(

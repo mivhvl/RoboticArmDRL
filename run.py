@@ -9,6 +9,8 @@ import time
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
+SMOOTHING_WINDOW = 10
+
 def main():
     # Initialize environment with BASIC controller
     robots = "Panda"
@@ -17,16 +19,16 @@ def main():
         if "output_max" not in config["body_parts"][part] or "output_min" not in config["body_parts"][part]:
             continue
         if type(config["body_parts"][part]["output_max"]) is not list:
-            config["body_parts"][part]["output_max"] /= 5
-            config["body_parts"][part]["output_min"] /= 5
+            config["body_parts"][part]["output_max"] /= SMOOTHING_WINDOW
+            config["body_parts"][part]["output_min"] /= SMOOTHING_WINDOW
             continue
 
         new_min = []
         new_max = []
         for val in config["body_parts"][part]["output_max"]:
-            new_max.append(val / 5) 
+            new_max.append(val / SMOOTHING_WINDOW) 
         for val in config["body_parts"][part]["output_min"]:
-            new_min.append(val / 5)
+            new_min.append(val / SMOOTHING_WINDOW)
         config["body_parts"][part]["output_min"] = new_min
         config["body_parts"][part]["output_max"] = new_max
 
@@ -45,7 +47,7 @@ def main():
     # Initialize agent with proper dimensions
     params = Hyperparameters()
     agent = PPOAgent(params.obs_dim, params.action_dim, kwargs=params)
-    model_path = 'vertical_get_cube_mid.pth'  # Change to your model path if needed
+    model_path = 'so_close.pth'  # Change to your model path if needed
     agent.load_model(model_path)
     
     # Create models directory
