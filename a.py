@@ -6,6 +6,7 @@ from env.PickMove import PickMove
 from DLR.network import Hyperparameters, PPOAgent
 import os
 import time
+import torch
 
 def main():
     # Initialize environment with BASIC controller
@@ -48,24 +49,30 @@ def main():
     agent.load_model(model_path)
     print(f"Loaded model from {model_path}")
 
-    # Run a few episodes to sample actions
-    num_episodes = 5
-    for episode in range(num_episodes):
-        obs = env.reset()
-        done = False
-        episode_reward = 0
-        step_count = 0
-        while not done:
-            action, log_prob, value = agent.select_action(obs)
-            env_action = np.array(action, dtype=np.float32)
-            next_obs, reward, done, _ = env.step(env_action)
-            obs = next_obs
-            episode_reward += reward
-            step_count += 1
-            env.render()
-        print(f"Episode {episode+1}: Reward = {episode_reward}, Steps = {step_count}")
+    # Export model to ONNX
+    agent.network.eval()  # Ensure model is in eval mode
 
-    env.close()
+    # Create dummy input with correct observation shape
+    dummy_input = torch.randn(1, params.obs_dim)  # Batch size of 1
 
-if __name__ == '__main__':
+    onnx_export_path = "ppo_agent.onnx"
+    torch.onnx.export(
+        agent.network,             # Your model
+        dummy_input,               # Dummy input
+        onnx_export_path,          # Output path
+        export_params=True,        # Store trained weights
+        opset_version=11,          # ONNX version
+        do_constant_folding=True,  # Run constant folding optimizations
+        input_names=['input'],     # Input tensor name
+        output_names=['mean', 'std', 'value'],  # Your model returns 3 outputs
+        dynamic_axes={
+            'input': {0: 'batch_size'},
+            'mean': {0: 'batch_size'},
+            'std': {0: 'batch_size'},
+            'value': {0: 'batch_size'}
+        }
+    )
+    print(f"Exported model to {onnx_export_path}")
+
+if __name__ == "__main__":
     main()
