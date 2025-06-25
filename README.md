@@ -54,7 +54,6 @@ This ensures that MuJoCo and all simulation dependencies are configured properly
    - reward_curve.png – Total reward per episode
    - loss_curve.png – PPO training loss
    - value_vs_return.png – Critic value estimation accuracy
-   - reward_components.png – Optional: tracks reach, grasp, and place rewards
 
 4. Model checkpoints are saved in the `models/` directory:
    - best_model.pth
@@ -80,15 +79,8 @@ agent.load_model('models/best_model.pth')
 ## 👥 Authors & Institution
 
 - Author(s): João A. C. Viveiros, Santiago Romero Pineda, Gonçalo P. N. de Pinho, Michał Dawid Kowalski
-- Course: Deep Learning for Robotics
+- Course: Topics in Intelligent Robotics
 - Institution: FEUP – Faculdade de Engenharia da Universidade do Porto
 - Date: June 2025
 
----
-
-## 📘 Notes
-
-- You can fine-tune a trained model by adjusting the reward function in `PickMove.py`.
-- Logs and reward components help diagnose grasping and placing performance.
-  
 ---
