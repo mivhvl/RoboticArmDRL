@@ -25,3 +25,55 @@ To install all required packages:
 ```
 pip install -r requirements.txt
 ```
+
+1. Train the agent:
+```
+   python run.py
+```
+
+2. Optional: Evaluate model performance:
+```
+   python check.py
+```
+3. Output graphs:
+   - reward_curve.png – Total reward per episode
+   - loss_curve.png – PPO training loss
+   - value_vs_return.png – Critic value estimation accuracy
+   - reward_components.png – Optional: tracks reach, grasp, and place rewards
+
+4. Model checkpoints are saved in the `models/` directory:
+   - best_model.pth
+   - final_model.pth
+   - checkpoint_XXX.pth (if periodic saves are enabled)
+
+To resume training from a checkpoint:
+
+agent.load_model('models/best_model.pth')
+
+---
+
+## 📂 Source Code Description
+
+- `env/PickMove.py` – Custom environment with reward shaping and task logic.
+- `DLR/network.py` – PPOAgent class with actor-critic networks and training.
+- `run.py` – Main training loop.
+- `check.py` – Evaluation and rendering (optional).
+- `requirements.txt` – Dependency list.
+
+---
+
+## 👥 Authors & Institution
+
+- Author(s): João A. C. Viveiros, Santiago Romero Pineda, Gonçalo P. N. de Pinho, Michał Dawid Kowalski
+- Course: Deep Learning for Robotics
+- Institution: FEUP – Faculdade de Engenharia da Universidade do Porto
+- Date: June 2025
+
+---
+
+## 📘 Notes
+
+- You can fine-tune a trained model by adjusting the reward function in `PickMove.py`.
+- Logs and reward components help diagnose grasping and placing performance.
+  
+---
