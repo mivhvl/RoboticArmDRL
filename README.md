@@ -25,6 +25,21 @@ To install all required packages:
 ```
 pip install -r requirements.txt
 ```
+Minimum required packages:
+- robosuite==1.4.0
+- torch
+- numpy
+- matplotlib
+
+**Important**: To install `robosuite` and `robosuite_models` correctly, please follow the official installation steps here:
+
+👉 https://robosuite.ai/docs/installation.html
+
+This ensures that MuJoCo and all simulation dependencies are configured properly.
+
+---
+
+
 
 1. Train the agent:
 ```
