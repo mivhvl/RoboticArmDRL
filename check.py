@@ -44,7 +44,7 @@ def main():
     # Initialize agent and load model
     params = Hyperparameters()
     agent = PPOAgent(params.obs_dim, params.action_dim, kwargs=params)
-    model_path = 'run_com_so_close/consistent.pth'  # Change to your model path if needed
+    model_path = 'final_model.pth'  # Change to your model path if needed
     agent.load_model(model_path)
     print(f"Loaded model from {model_path}")
 
