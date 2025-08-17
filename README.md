@@ -2,6 +2,8 @@
 
 This project involves training a robotic arm using **Reinforcement Learning** (Proximal Policy Optimization – PPO) with the `robosuite` simulator to grasp a cube and move it to another location (another table surface). Developed as part of a robotics and AI course at **FEUP**.
 
+![Robot Arm Simulation](images/robot_arm.jpg)
+
 ---
 
 ## 📁 Project Structure
