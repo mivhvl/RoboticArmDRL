@@ -7,12 +7,31 @@ from DLR.network import Hyperparameters, PPOAgent
 import os
 import time
 from collections import defaultdict
+import matplotlib.pyplot as plt
+
+SMOOTHING_WINDOW = 10
 
 def main():
     # Initialize environment with BASIC controller
     robots = "Panda"
     config = load_composite_controller_config(controller="BASIC")
-    
+    for part in config["body_parts"]:
+        if "output_max" not in config["body_parts"][part] or "output_min" not in config["body_parts"][part]:
+            continue
+        if type(config["body_parts"][part]["output_max"]) is not list:
+            config["body_parts"][part]["output_max"] /= SMOOTHING_WINDOW
+            config["body_parts"][part]["output_min"] /= SMOOTHING_WINDOW
+            continue
+
+        new_min = []
+        new_max = []
+        for val in config["body_parts"][part]["output_max"]:
+            new_max.append(val / SMOOTHING_WINDOW) 
+        for val in config["body_parts"][part]["output_min"]:
+            new_min.append(val / SMOOTHING_WINDOW)
+        config["body_parts"][part]["output_min"] = new_min
+        config["body_parts"][part]["output_max"] = new_max
+
     # Create environment
     env = robosuite.make(
         'PickMove',
@@ -22,11 +41,14 @@ def main():
         has_offscreen_renderer=False,
         use_camera_obs=False,
         control_freq=20,
+        ignore_done=False, 
     )
 
     # Initialize agent with proper dimensions
     params = Hyperparameters()
-    agent = PPOAgent(params)
+    agent = PPOAgent(params.obs_dim, params.action_dim, kwargs=params)
+    model_path = 'run_com_so_close/consistent.pth'  # Change to your model path if needed
+    agent.load_model(model_path)
     
     # Create models directory
     os.makedirs('models', exist_ok=True)
@@ -46,7 +68,7 @@ def main():
         while not done:
             action = None
             try:
-                action, log_prob, value = agent.get_action(raw_obs)
+                action, log_prob, value = agent.select_action(raw_obs)
                 
                 # Direct mapping - agent learns proper scaling
                 env_action = np.array(action, dtype=np.float32)
@@ -55,7 +77,7 @@ def main():
                 next_raw_obs, reward, done, _ = env.step(env_action)
                 
                 # Store experience with proper type conversion
-                agent.remember(
+                agent.store_transition(
                     raw_obs,
                     action.astype(np.float32),
                     float(log_prob),
@@ -70,7 +92,9 @@ def main():
                 
                 # Train if enough samples
                 if len(agent.memory) >= params.buffer_size:
-                    agent.train()
+                    loss = agent.train()
+                    stats['losses'].append(loss)
+                    done = True
                 
                 # Render if needed
                 env.render()
@@ -105,6 +129,40 @@ def main():
     
     # Save final model
     agent.save_model('models/final_model.pth')
+
+    plt.figure(figsize=(8,4))
+    plt.plot(agent.value_trace,  label='Value (pred)')
+    plt.plot(agent.return_trace, label='Return (target)')
+    plt.title('Critic Prediction vs. Empirical Return')
+    plt.xlabel('Minibatch'); plt.ylabel('Average')
+    plt.legend(); plt.grid(True); plt.tight_layout()
+    plt.savefig('value_vs_return.png')   # also saved to disk
+    plt.show()
+
+    if stats['episode_rewards']:
+        plt.figure(figsize=(10, 5))
+        plt.plot(stats['episode_rewards'], label='Training Rewards')
+        plt.xlabel('Training Steps')
+        plt.ylabel('Reward')
+        plt.title('PPO Training Reward over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig('reward_curve.png')  # Save to file
+        plt.show() 
+
+    if stats['losses']:
+        plt.figure(figsize=(10, 5))
+        plt.plot(stats['losses'], label='Training Loss')
+        plt.xlabel('Training Steps')
+        plt.ylabel('Loss')
+        plt.title('PPO Training Loss over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig('loss_curve.png')  # Save to file
+        plt.show() 
+
     env.close()
 
 if __name__ == '__main__':
