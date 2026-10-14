@@ -84,7 +84,6 @@ agent.load_model('models/best_model.pth')
 - Author(s): João A. C. Viveiros, Santiago Romero Pineda, Gonçalo P. N. de Pinho, Michał Dawid Kowalski
 - Course: Deep Learning for Robotics
 - Institution: FEUP – Faculdade de Engenharia da Universidade do Porto
-- Date: June 2025
 
 ---
 
